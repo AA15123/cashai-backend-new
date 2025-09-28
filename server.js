@@ -84,49 +84,45 @@ app.post('/api/set_access_token', async (req, res) => {
 });
 
 // Get Accounts
-app.post('/api/accounts', async (req, res) => {
-  try {
-    console.log('📊 Fetching accounts for access token');
-    
-    const request = {
-      access_token: req.body.access_token,
-    };
+app.get('/api/accounts', async (req, res) => {
+    try {
+        const { access_token } = req.query;
+        if (!access_token) {
+            return res.status(400).json({ error: 'access_token is required' });
+        }
 
-    const accountsResponse = await client.accountsGet(request);
-    
-    console.log('✅ Accounts fetched successfully');
-    res.json(accountsResponse.data);
-  } catch (error) {
-    console.error('❌ Error fetching accounts:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch accounts',
-      details: error.message 
-    });
-  }
+        const request = {
+            access_token: access_token,
+        };
+
+        const accountsResponse = await plaidClient.accountsGet(request);
+        res.json(accountsResponse.data);
+    } catch (error) {
+        console.error('❌ Error fetching accounts:', error.response ? error.response.data : error.message);
+        res.status(500).json({ error: 'Failed to fetch accounts', details: error.response ? error.response.data : error.message });
+    }
 });
 
 // Get Transactions
-app.post('/api/transactions', async (req, res) => {
-  try {
-    console.log('💳 Fetching transactions for access token');
-    
-    const request = {
-      access_token: req.body.access_token,
-      start_date: req.body.start_date || '2024-01-01',
-      end_date: req.body.end_date || new Date().toISOString().split('T')[0],
-    };
+app.get('/api/transactions', async (req, res) => {
+    try {
+        const { access_token, start_date, end_date } = req.query;
+        if (!access_token || !start_date || !end_date) {
+            return res.status(400).json({ error: 'access_token, start_date, and end_date are required' });
+        }
 
-    const transactionsResponse = await client.transactionsGet(request);
-    
-    console.log('✅ Transactions fetched successfully');
-    res.json(transactionsResponse.data);
-  } catch (error) {
-    console.error('❌ Error fetching transactions:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch transactions',
-      details: error.message 
-    });
-  }
+        const request = {
+            access_token: access_token,
+            start_date: start_date,
+            end_date: end_date,
+        };
+
+        const transactionsResponse = await plaidClient.transactionsGet(request);
+        res.json(transactionsResponse.data);
+    } catch (error) {
+        console.error('❌ Error fetching transactions:', error.response ? error.response.data : error.message);
+        res.status(500).json({ error: 'Failed to fetch transactions', details: error.response ? error.response.data : error.message });
+    }
 });
 
 // Start server
