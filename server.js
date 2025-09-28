@@ -23,7 +23,7 @@ const configuration = new Configuration({
   },
 });
 
-const client = new PlaidApi(configuration);
+const plaidClient = new PlaidApi(configuration);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
