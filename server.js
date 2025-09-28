@@ -40,7 +40,7 @@ app.post('/api/create_link_token', async (req, res) => {
         client_user_id: req.body.user_id || 'cashai-user',
       },
       client_name: 'CashAI',
-      products: ['transactions', 'auth', 'accounts'], // Added 'accounts' for production
+         products: ['transactions', 'auth'], // Removed 'accounts' - not a valid product
       country_codes: ['US'],
       language: 'en',
     };
