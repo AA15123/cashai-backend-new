@@ -54,7 +54,7 @@ app.post('/api/create_link_token', async (req, res) => {
                 client_user_id: user_id,
             },
             client_name: 'CashAI',
-            products: ['transactions', 'liabilities'],  // Changed: removed 'auth' to allow credit cards // Removed 'accounts' - not a valid product
+            products: ['transactions'],  // Changed: removed 'auth' to allow credit cards // Removed 'accounts' - not a valid product
             country_codes: ['US'],
             language: 'en',
         };
