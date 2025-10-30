@@ -4,144 +4,138 @@ const cors = require('cors');
 const { Configuration, PlaidApi, PlaidEnvironments } = require('plaid');
 
 const app = express();
-const PORT = process.env.PORT || 8000; // Default to 8000, Railway will map to 8080
+const PORT = process.env.PORT || 8000; // Railway maps as needed
 
-// Plaid Configuration
+// Plaid configuration
 const PLAID_CLIENT_ID = process.env.PLAID_CLIENT_ID;
 const PLAID_SECRET = process.env.PLAID_SECRET;
-const PLAID_ENV = process.env.PLAID_ENV || 'sandbox'; // Default to sandbox
+const PLAID_ENV = process.env.PLAID_ENV || 'sandbox';
 
 let plaidClient;
-
 try {
-    const configuration = new Configuration({
-        basePath: PlaidEnvironments[PLAID_ENV],
-        baseOptions: {
-            headers: {
-                'PLAID-CLIENT-ID': PLAID_CLIENT_ID,
-                'PLAID-SECRET': PLAID_SECRET,
-            },
-        },
-    });
-    plaidClient = new PlaidApi(configuration);
-    console.log(`🌍 Plaid Environment: ${PLAID_ENV}`);
+  const configuration = new Configuration({
+    basePath: PlaidEnvironments[PLAID_ENV],
+    baseOptions: {
+      headers: {
+        'PLAID-CLIENT-ID': PLAID_CLIENT_ID,
+        'PLAID-SECRET': PLAID_SECRET,
+      },
+    },
+  });
+  plaidClient = new PlaidApi(configuration);
+  console.log(`🌍 Plaid Environment: ${PLAID_ENV}`);
 } catch (error) {
-    console.error('❌ Failed to initialize Plaid client:', error);
-    process.exit(1); // Exit if Plaid client can't be initialized
+  console.error('❌ Failed to initialize Plaid client:', error);
+  process.exit(1);
 }
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// Health Check Endpoint
+// Health
 app.get('/health', (req, res) => {
-    res.status(200).json({ status: 'OK', message: 'CashAI Backend is running!' });
+  res.status(200).json({ status: 'OK', message: 'CashAI Backend is running!' });
 });
 
-// Create Link Token
+// Create Link Token — request up to 24 months for new links
 app.post('/api/create_link_token', async (req, res) => {
-    try {
-        const { user_id } = req.body;
-        if (!user_id) {
-            return res.status(400).json({ error: 'user_id is required' });
-        }
+  try {
+    const { user_id } = req.body || {};
+    if (!user_id) return res.status(400).json({ error: 'user_id is required' });
 
-        console.log(`Creating link token for user: ${user_id}`);
+    const request = {
+      user: { client_user_id: user_id },
+      client_name: 'CashAI',
+      products: ['transactions'],
+      country_codes: ['US'],
+      language: 'en',
+      transactions: { days_requested: 730 }, // 24 months
+    };
 
-        const request = {
-  user: {
-    client_user_id: user_id,
-  },
-  client_name: 'CashAI',
-  products: ['transactions'],
-  country_codes: ['US'],
-  language: 'en',
-  transactions: {
-    days_requested: 365  // Request 12 months (365 days)
+    const r = await plaidClient.linkTokenCreate(request);
+    res.json(r.data);
+  } catch (error) {
+    console.error('❌ Error creating link token:', error.response ? error.response.data : error.message);
+    res.status(500).json({ error: 'Failed to create link token' });
   }
-};
-
-        const createTokenResponse = await plaidClient.linkTokenCreate(request);
-        console.log('✔ Link token created successfully');
-        res.json(createTokenResponse.data);
-    } catch (error) {
-        console.error('❌ Error creating link token:', error.response ? error.response.data : error.message);
-        res.status(500).json({ error: 'Failed to create link token', details: error.response ? error.response.data : error.message });
-    }
 });
 
 // Exchange Public Token for Access Token
 app.post('/api/set_access_token', async (req, res) => {
-    try {
-        const { public_token } = req.body;
-        if (!public_token) {
-            return res.status(400).json({ error: 'public_token is required' });
-        }
+  try {
+    const { public_token } = req.body || {};
+    if (!public_token) return res.status(400).json({ error: 'public_token is required' });
 
-        console.log('Exchanging public token for access token');
-
-        const request = {
-            public_token: public_token,
-        };
-
-        const accessTokenResponse = await plaidClient.itemPublicTokenExchange(request);
-        console.log('✔ Public token exchanged successfully');
-        res.json({
-            access_token: accessTokenResponse.data.access_token,
-            item_id: accessTokenResponse.data.item_id,
-        });
-    } catch (error) {
-        console.error('❌ Error exchanging public token:', error.response ? error.response.data : error.message);
-        res.status(500).json({ error: 'Failed to exchange public token', details: error.response ? error.response.data : error.message });
-    }
+    const r = await plaidClient.itemPublicTokenExchange({ public_token });
+    res.json({
+      access_token: r.data.access_token,
+      item_id: r.data.item_id,
+    });
+  } catch (error) {
+    console.error('❌ Error exchanging public token:', error.response ? error.response.data : error.message);
+    res.status(500).json({ error: 'Failed to exchange public token' });
+  }
 });
 
 // Get Accounts
 app.get('/api/accounts', async (req, res) => {
-    try {
-        const { access_token } = req.query;
-        if (!access_token) {
-            return res.status(400).json({ error: 'access_token is required' });
-        }
+  try {
+    const { access_token } = req.query;
+    if (!access_token) return res.status(400).json({ error: 'access_token is required' });
 
-        const request = {
-            access_token: access_token,
-        };
-
-        const accountsResponse = await plaidClient.accountsGet(request);
-        res.json(accountsResponse.data);
-    } catch (error) {
-        console.error('❌ Error fetching accounts:', error.response ? error.response.data : error.message);
-        res.status(500).json({ error: 'Failed to fetch accounts', details: error.response ? error.response.data : error.message });
-    }
+    const r = await plaidClient.accountsGet({ access_token });
+    res.json(r.data);
+  } catch (error) {
+    console.error('❌ Error fetching accounts:', error.response ? error.response.data : error.message);
+    res.status(500).json({ error: 'Failed to fetch accounts' });
+  }
 });
 
-// Get Transactions
+// Get Transactions — pass through date range + pagination
 app.get('/api/transactions', async (req, res) => {
-    try {
-        const { access_token, start_date, end_date } = req.query;
-        if (!access_token || !start_date || !end_date) {
-            return res.status(400).json({ error: 'access_token, start_date, and end_date are required' });
-        }
+  try {
+    const {
+      access_token,
+      start_date,
+      end_date,
+      count = '500',
+      offset = '0',
+      account_id,
+    } = req.query;
 
-        const request = {
-            access_token: access_token,
-            start_date: start_date,
-            end_date: end_date,
-        };
-
-        const transactionsResponse = await plaidClient.transactionsGet(request);
-        res.json(transactionsResponse.data);
-    } catch (error) {
-        console.error('❌ Error fetching transactions:', error.response ? error.response.data : error.message);
-        res.status(500).json({ error: 'Failed to fetch transactions', details: error.response ? error.response.data : error.message });
+    if (!access_token) return res.status(400).json({ error: 'access_token is required' });
+    if (!start_date || !end_date) {
+      return res.status(400).json({ error: 'start_date and end_date are required (yyyy-mm-dd)' });
     }
+
+    const request = {
+      access_token,
+      start_date,
+      end_date,
+      options: {
+        count: Number(count),
+        offset: Number(offset),
+        ...(account_id ? { account_ids: [account_id] } : {}),
+      },
+    };
+
+    const r = await plaidClient.transactionsGet(request);
+
+    // Normalize response the client expects
+    res.json({
+      transactions: r.data.transactions || [],
+      total_transactions: r.data.total_transactions || 0,
+    });
+  } catch (error) {
+    console.error('❌ Error fetching transactions:', error.response ? error.response.data : error.message);
+    res.status(500).json({ error: 'Failed to fetch transactions' });
+  }
 });
 
-// Start the server
+// Start server
 app.listen(PORT, () => {
-    console.log(`🚀 CashAI Backend running on port ${PORT}`);
-    console.log(`🌍 Environment: ${PLAID_ENV}`);
-    console.log(`📱 Health check: http://localhost:${PORT}/health`);
+  console.log(`🚀 CashAI Backend running on port ${PORT}`);
+  console.log(`🌍 Environment: ${PLAID_ENV}`);
+  console.log(`📱 Health check: http://localhost:${PORT}/health`);
 });
