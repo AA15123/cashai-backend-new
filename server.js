@@ -222,7 +222,20 @@ app.get('/api/transactions', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('❌ Error fetching transactions:', error);
+    console.error('═══════════════════════════════════════════════════════════');
+    console.error('❌ ERROR FETCHING TRANSACTIONS');
+    console.error('❌ Error message:', error.message);
+    
+    // Log full Plaid error response if available
+    if (error.response?.data) {
+      console.error('❌ Plaid error response:', JSON.stringify(error.response.data, null, 2));
+      console.error('❌ Plaid error code:', error.response.data.error_code);
+      console.error('❌ Plaid error type:', error.response.data.error_type);
+      console.error('❌ Plaid error message:', error.response.data.error_message);
+    }
+    
+    console.error('❌ Full error:', error);
+    console.error('═══════════════════════════════════════════════════════════');
     
     // Check for PRODUCT_NOT_READY error
     if (error.response?.data?.error_code === 'PRODUCT_NOT_READY') {
@@ -234,9 +247,13 @@ app.get('/api/transactions', async (req, res) => {
       });
     }
     
-    res.status(500).json({ 
+    // Return the actual status code from Plaid if available
+    const statusCode = error.response?.status || 500;
+    res.status(statusCode).json({ 
       error: 'Failed to fetch transactions',
       error_code: error.response?.data?.error_code,
+      error_type: error.response?.data?.error_type,
+      error_message: error.response?.data?.error_message,
       details: error.message 
     });
   }
