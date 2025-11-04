@@ -33,6 +33,9 @@ app.post('/api/create_link_token', async (req, res) => {
   try {
     const { user_id } = req.body;
     
+    // CRITICAL LOGGING - These logs are essential for debugging
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('📝 LINK TOKEN CREATION REQUEST');
     console.log('📝 Creating link token for user:', user_id);
     console.log('✅✅✅ CRITICAL: Requesting 6 months (180 days) of historical data with days_requested: 180');
     
@@ -49,18 +52,27 @@ app.post('/api/create_link_token', async (req, res) => {
       }
     };
     
-    console.log('📋 Link token request:', JSON.stringify(linkTokenRequest, null, 2));
+    console.log('📋 Link token request configuration:');
+    console.log('   - products:', linkTokenRequest.products);
+    console.log('   - transactions.days_requested:', linkTokenRequest.transactions.days_requested);
+    console.log('   - user.client_user_id:', linkTokenRequest.user.client_user_id);
     
     const linkTokenResponse = await plaidClient.linkTokenCreate(linkTokenRequest);
     
-    console.log('✅ Link token created successfully with days_requested: 180 (6 months)');
+    console.log('✅✅✅ LINK TOKEN CREATED SUCCESSFULLY with days_requested: 180 (6 months)');
+    console.log('✅ Token length:', linkTokenResponse.data.link_token?.length || 0);
+    console.log('═══════════════════════════════════════════════════════════');
     
     res.json({ 
       link_token: linkTokenResponse.data.link_token 
     });
     
   } catch (error) {
-    console.error('❌ Error creating link token:', error);
+    console.error('═══════════════════════════════════════════════════════════');
+    console.error('❌ ERROR CREATING LINK TOKEN');
+    console.error('❌ Error:', error.message);
+    console.error('❌ Full error:', error);
+    console.error('═══════════════════════════════════════════════════════════');
     res.status(500).json({ 
       error: 'Failed to create link token',
       details: error.message 
