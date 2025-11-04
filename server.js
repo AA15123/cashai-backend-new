@@ -34,8 +34,9 @@ app.post('/api/create_link_token', async (req, res) => {
     const { user_id } = req.body;
     
     console.log('📝 Creating link token for user:', user_id);
+    console.log('✅✅✅ CRITICAL: Requesting 6 months (180 days) of historical data with days_requested: 180');
     
-    const linkTokenResponse = await plaidClient.linkTokenCreate({
+    const linkTokenRequest = {
       user: {
         client_user_id: user_id || 'default_user',
       },
@@ -46,9 +47,13 @@ app.post('/api/create_link_token', async (req, res) => {
       transactions: {
         days_requested: 180  // ✅ CRITICAL FIX: Request 6 months (180 days) of historical data
       }
-    });
+    };
     
-    console.log('✅ Link token created successfully');
+    console.log('📋 Link token request:', JSON.stringify(linkTokenRequest, null, 2));
+    
+    const linkTokenResponse = await plaidClient.linkTokenCreate(linkTokenRequest);
+    
+    console.log('✅ Link token created successfully with days_requested: 180 (6 months)');
     
     res.json({ 
       link_token: linkTokenResponse.data.link_token 
@@ -177,6 +182,24 @@ app.get('/api/transactions', async (req, res) => {
     if (transactions.length > 0) {
       const dates = transactions.map(tx => tx.date).sort();
       console.log(`📅 Transaction date range returned: ${dates[0]} to ${dates[dates.length - 1]}`);
+      
+      // Calculate how many months of data we actually got
+      const requestedStart = new Date(startDate);
+      const requestedEnd = new Date(endDate);
+      const actualStart = new Date(dates[0]);
+      const actualEnd = new Date(dates[dates.length - 1]);
+      
+      const requestedMonths = (requestedEnd - requestedStart) / (1000 * 60 * 60 * 24 * 30);
+      const actualMonths = (actualEnd - actualStart) / (1000 * 60 * 60 * 24 * 30);
+      
+      console.log(`⚠️ WARNING: Requested ${requestedMonths.toFixed(1)} months, but only got ${actualMonths.toFixed(1)} months of data`);
+      
+      if (actualMonths < requestedMonths * 0.8) {
+        console.log(`⚠️⚠️⚠️ CRITICAL: Item was likely created before backend fix with days_requested: 180`);
+        console.log(`⚠️⚠️⚠️ User needs to disconnect and reconnect bank to get full 6 months of data`);
+      }
+    } else {
+      console.log(`⚠️ No transactions returned for date range: ${startDate} to ${endDate}`);
     }
     
     res.json({
