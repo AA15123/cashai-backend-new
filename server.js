@@ -157,12 +157,15 @@ app.get('/api/transactions', async (req, res) => {
     console.log(`📊 Fetching transactions: ${startDate} to ${endDate} (count: ${count}, offset: ${offset})`);
     
     // ✅ CRITICAL FIX: Pass start_date and end_date to Plaid's transactionsGet API
+    // Note: count and offset must be nested in an options object
     const response = await plaidClient.transactionsGet({
       access_token: access_token,
       start_date: startDate,  // ✅ Must pass this from query params
       end_date: endDate,      // ✅ Must pass this from query params
-      count: parseInt(count),
-      offset: parseInt(offset),
+      options: {
+        count: parseInt(count),
+        offset: parseInt(offset),
+      }
     });
     
     const transactions = response.data.transactions || [];
