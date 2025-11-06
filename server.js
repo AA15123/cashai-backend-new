@@ -129,6 +129,19 @@ app.get('/api/accounts', async (req, res) => {
       access_token: access_token,
     });
     
+    // Log item status to see if historical data is still processing
+    const item = response.data.item;
+    console.log('📋 Plaid Item Status:');
+    console.log('   - Item ID:', item.item_id);
+    console.log('   - Institution ID:', item.institution_id);
+    console.log('   - Institution Name:', item.institution_name);
+    console.log('   - Available Products:', item.available_products);
+    console.log('   - Billed Products:', item.billed_products);
+    console.log('   - Consented Products:', item.consented_products);
+    if (item.error) {
+      console.log('   - Item Error:', JSON.stringify(item.error, null, 2));
+    }
+    
     res.json({
       accounts: response.data.accounts,
       item: response.data.item,
@@ -144,6 +157,8 @@ app.get('/api/accounts', async (req, res) => {
 });
 
 // ✅ FIXED: Get transactions with proper date range handling (6 months)
+// Note: Plaid processes historical data in background after link token creation
+// We retry on PRODUCT_NOT_READY until historical data is ready
 app.get('/api/transactions', async (req, res) => {
   try {
     const { access_token, start_date, end_date, count = 500, offset = 0 } = req.query;
@@ -175,6 +190,8 @@ app.get('/api/transactions', async (req, res) => {
     
     // ✅ CRITICAL FIX: Pass start_date and end_date to Plaid's transactionsGet API
     // Note: count and offset must be nested in an options object
+    // Note: If historical data isn't ready yet, Plaid returns PRODUCT_NOT_READY
+    // The iOS app will retry automatically until data is ready
     const response = await plaidClient.transactionsGet({
       access_token: access_token,
       start_date: startDate,  // ✅ Must pass this from query params
@@ -190,35 +207,69 @@ app.get('/api/transactions', async (req, res) => {
     
     console.log(`✅ Plaid returned ${transactions.length} transactions (total: ${totalTransactions}, offset: ${offset})`);
     
+    // CRITICAL: Check if Plaid actually has the data we requested
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('📊 PLAID DATA AVAILABILITY CHECK:');
+    console.log(`   - Requested date range: ${startDate} to ${endDate}`);
+    console.log(`   - Total transactions available from Plaid: ${totalTransactions}`);
+    console.log(`   - Transactions in this response: ${transactions.length}`);
+    console.log(`   - Offset: ${offset}`);
+    console.log(`   - Has more pages: ${transactions.length < totalTransactions && transactions.length > 0}`);
+    console.log('═══════════════════════════════════════════════════════════');
+    
     // Log date range of returned transactions for debugging
+    let hasIncompleteData = false;
     if (transactions.length > 0) {
       const dates = transactions.map(tx => tx.date).sort();
-      console.log(`📅 Transaction date range returned: ${dates[0]} to ${dates[dates.length - 1]}`);
+      const oldestDate = dates[0]; // Oldest transaction
+      const newestDate = dates[dates.length - 1]; // Newest transaction
+      console.log(`📅 Transaction date range returned: ${oldestDate} to ${newestDate}`);
       
       // Calculate how many months of data we actually got
       const requestedStart = new Date(startDate);
       const requestedEnd = new Date(endDate);
-      const actualStart = new Date(dates[0]);
-      const actualEnd = new Date(dates[dates.length - 1]);
+      const actualStart = new Date(oldestDate);
+      const actualEnd = new Date(newestDate);
       
       const requestedMonths = (requestedEnd - requestedStart) / (1000 * 60 * 60 * 24 * 30);
       const actualMonths = (actualEnd - actualStart) / (1000 * 60 * 60 * 24 * 30);
       
-      console.log(`⚠️ WARNING: Requested ${requestedMonths.toFixed(1)} months, but only got ${actualMonths.toFixed(1)} months of data`);
+      // Check if we're missing significant historical data (more than 30 days)
+      const daysDifference = (actualStart - requestedStart) / (1000 * 60 * 60 * 24);
       
-      if (actualMonths < requestedMonths * 0.8) {
-        console.log(`⚠️⚠️⚠️ CRITICAL: Item was likely created before backend fix with days_requested: 180`);
-        console.log(`⚠️⚠️⚠️ User needs to disconnect and reconnect bank to get full 6 months of data`);
+      console.log(`📊 Data completeness check:`);
+      console.log(`   - Requested: ${requestedMonths.toFixed(1)} months (${startDate} to ${endDate})`);
+      console.log(`   - Received: ${actualMonths.toFixed(1)} months (${oldestDate} to ${newestDate})`);
+      console.log(`   - Days difference: ${daysDifference.toFixed(0)} days (positive = missing historical data)`);
+      
+      if (daysDifference > 30) {
+        hasIncompleteData = true;
+        console.log(`⚠️⚠️⚠️ CRITICAL: Only got ${actualMonths.toFixed(1)} months of data instead of ${requestedMonths.toFixed(1)} months`);
+        console.log(`⚠️⚠️⚠️ Missing ${daysDifference.toFixed(0)} days of historical data!`);
+        console.log(`⚠️⚠️⚠️ Possible reasons:`);
+        console.log(`   1. Plaid is still syncing historical data (can take 5-15 minutes for 6 months)`);
+        console.log(`   2. Item was created before backend fix with days_requested: 180`);
+        console.log(`   3. Bank account doesn't have 6 months of transaction history available`);
+        console.log(`   4. Bank hasn't made historical data available to Plaid yet`);
+        console.log(`⚠️⚠️⚠️ Recommendation: Client should retry until full 6 months are available`);
+      } else {
+        console.log(`✅ SUCCESS: Got full ${requestedMonths.toFixed(1)} months of data!`);
       }
     } else {
       console.log(`⚠️ No transactions returned for date range: ${startDate} to ${endDate}`);
     }
     
+    // Return response with metadata about data completeness
     res.json({
       transactions: transactions,
       total_transactions: totalTransactions,
       accounts: response.data.accounts,
       item: response.data.item,
+      // Add metadata to help client know if more data is coming
+      data_complete: !hasIncompleteData,
+      requested_start_date: startDate,
+      requested_end_date: endDate,
+      has_more_data_coming: hasIncompleteData
     });
     
   } catch (error) {
